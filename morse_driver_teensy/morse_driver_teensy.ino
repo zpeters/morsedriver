@@ -1,185 +1,135 @@
-// http://www.pjrc.com/teensy/td_libs_Bounce.html
-#include <Bounce.h>
+#include <Bounce2.h>
 
+/*** Settings ****************************************/
+// Assign buttons and leds
 const int buttonPin = 0;
-const int ledPin = 13;
-const int ditLength = 300;
+const int ledPin = 13;  // built-in led
+
+// Assign morse timeouts
+const int ditLength = 250;
 const int dahLength = ditLength * 3;
 const int letterSpaceLength = ditLength * 3;
 const int wordSpaceLength = ditLength * 7;
-Bounce pushbutton = Bounce(buttonPin, 10);
+
+// Assign morse symbols
+String dit = ".";
+String dah = "-";
+String space = "/";
+
+/*** Global State ****************************************/
+Bounce pushbutton = Bounce();
 unsigned long downAt = 0;
 unsigned long upAt = 0;
 unsigned long timeout = 0;
 boolean timeoutBool = false;
 String myLetter = "";
+boolean modalEnabled = false;
 
+/*** Setup ****************************************/
 void setup() {
   pinMode(buttonPin, INPUT_PULLUP);
+  digitalWrite(buttonPin, HIGH);
+  pushbutton.attach(buttonPin);
+  pushbutton.interval(5);
   pinMode(ledPin, OUTPUT);
   Serial.begin(38400);
-  Serial.println("READY - OK");
   blinkOK();
 }
 
+/*** Blink Routines ****************************/
 void blinkOK() {
-  // Dah
-  digitalWrite(ledPin, HIGH);
-  delay(dahLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dah
+  blinkDah();
+  blinkDit();
+  blinkDah();
+}
+
+void blinkDah() {
   digitalWrite(ledPin, HIGH);
   delay(dahLength);
   digitalWrite(ledPin, LOW);
   delay(ditLength);
 }
 
-void blinkQuestion() {
-    // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-    // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dah
-  digitalWrite(ledPin, HIGH);
-  delay(dahLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dah
-  digitalWrite(ledPin, HIGH);
-  delay(dahLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
- 
-  // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dit
+void blinkDit() {
   digitalWrite(ledPin, HIGH);
   delay(ditLength);
   digitalWrite(ledPin, LOW);
   delay(ditLength);
 }
 
-void blinkUnderstood() {
-  // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dah
-  digitalWrite(ledPin, HIGH);
-  delay(dahLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-  
-  // Dit
-  digitalWrite(ledPin, HIGH);
-  delay(ditLength);
-  digitalWrite(ledPin, LOW);
-  delay(ditLength);
-}
-
-void processMorse(String myString) {
-  Serial.print("Checking '");
-  Serial.print(myString);
-  Serial.print("' - ");
-  if (myString == ".-") {
-    Serial.println("'A'");
-    Keyboard.write('a');
-  } else if (myString == "-...") {
-    Serial.println("Got 'B' sending Alt+Left Arrow");
-    //Keyboard.set_modifier(MODIFIERKEY_ALT);
-    //Keyboard.set_key1(KEY_LEFT);
-    Keyboard.set_key1(KEY_BACKSPACE);
-    Keyboard.send_now();
-    delay(500);
-    //Keyboard.set_modifier(0);
-    Keyboard.set_key1(0);
-    Keyboard.send_now();  
-  } else if (myString == "--..") {
-    Serial.println("'Z'");
-    Keyboard.write('z');
-  } else if (myString == ".---") {
-      Serial.println("'J'");
-      Keyboard.write('j');
-  } else if (myString == "-.-") {
-      Serial.println("'K'");
-      Keyboard.write('k');
-  } else if (myString == "..--..") {
-      Serial.println("'?'");
-      Keyboard.write('?');
+/** Modal functions **/
+void toggleModal() {
+  if (modalEnabled == true) {
+    modalEnabled = false;
   } else {
-    Serial.println("UNKNOWN");
-    //blinkQuestion();
+    modalEnabled = true;
   }
 }
 
+/** Morse Processing **/
+void processMorse(String myString) {
+  // If we are switching modes we need to switch
+  // and return to the event loop
+  if (myString == "-..---") {
+    Serial.println("Switching modes...");
+    toggleModal();
+    return;
+  }
+
+  // We are not switching modes so process
+  // the input
+  if (modalEnabled) {
+    if (myString == ".-") {
+      Serial.println("<up>");
+    } else if (myString == "-.") {
+      Serial.println("<down>");
+    } else if (myString == "..") {
+      Serial.println("<right>");
+    } else if (myString == "--") {
+      Serial.println("<left>");
+    } else {
+      Serial.println("<UNKNOWN>");
+    }
+  } else {
+      Keyboard.print(myString);
+  }
+
+}
+
+/** Event Loop **/
 void loop() {
-      // test how long we've been waiting for a space
+     // Test if we have waited long enough for a space (aka a word is complete)
+     // Continue processing the next input until we timeout
     if ((millis() - timeout) > letterSpaceLength && timeoutBool == true) {
-       //Serial.println("Timeout");
        processMorse(myLetter);
        timeoutBool = false;
        myLetter = "";
+       // send a space
+       Keyboard.print(space);
      }
-  
-  if (pushbutton.update()) {
-
- 
-    if (pushbutton.fallingEdge()) {
-      // button pushed down  
-      downAt = millis();
-    } else if (pushbutton.risingEdge()) {
-      // button released
-      upAt = millis();
-      unsigned long diff = upAt - downAt;
-      if (diff <= ditLength) {
-        // we got a dit
-        myLetter += ".";
-        //Serial.print(".");
-        timeout = millis();
-        timeoutBool = true;
-      } else if (diff > ditLength) {
-        // we got a dah
-        myLetter += "-";
-        //Serial.print("-");
-        timeout = millis();
-        timeoutBool = true;
+    // If the button state has changed...
+    if (pushbutton.update()) {
+      // Check if it has been pushed down...
+      if (pushbutton.fallingEdge()) {
+        digitalWrite(ledPin, HIGH);
+        downAt = millis();
+      // ...Or it is coming up
+      } else if (pushbutton.risingEdge()) {
+        digitalWrite(ledPin, LOW);
+        upAt = millis();
+        // if the button has been released, figure out how long it was held down for
+        unsigned long diff = upAt - downAt;
+        if (diff <= ditLength) {
+          // if it was "dit" length then we got a dit add it to the letter accumulator
+          myLetter += dit;
+          timeout = millis();
+          timeoutBool = true;
+        } else if (diff > ditLength) {
+          // if it was "dah" length then we got a dah add it to the letter accumulator
+          myLetter += dah;
+          timeout = millis();
+          timeoutBool = true;
+        }
       }
     }
-  }
 }
