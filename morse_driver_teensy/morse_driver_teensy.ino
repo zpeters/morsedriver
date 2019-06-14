@@ -1,5 +1,11 @@
 #include <Bounce2.h>
 
+/*
+ * TODO
+ * 
+ * Right now we are just printing back letters, instead we need to return back through functions and accumulate
+ */
+
 /*** Settings ****************************************/
 // Assign buttons and leds
 const int buttonPin = 0;
@@ -23,7 +29,12 @@ unsigned long upAt = 0;
 unsigned long timeout = 0;
 boolean timeoutBool = false;
 String myLetter = "";
-boolean modalEnabled = false;
+enum State {
+  RAW,
+  ASCII,
+  EDIT
+};
+enum State commandState = RAW;
 
 /*** Setup ****************************************/
 void setup() {
@@ -57,12 +68,44 @@ void blinkDit() {
   delay(ditLength);
 }
 
-/** Modal functions **/
-void toggleModal() {
-  if (modalEnabled == true) {
-    modalEnabled = false;
-  } else {
-    modalEnabled = true;
+/** State functions **/
+void toggleState() {
+  switch(commandState) {
+    case EDIT:
+      commandState = RAW;
+      Serial.print("Switching to ");
+      printState();
+      break;
+    case RAW:
+      commandState = ASCII;
+      Serial.print("Switching to ");
+      printState();
+      break;
+    case ASCII:
+      commandState = EDIT;
+      Serial.print("Switching to ");
+      printState();
+      break;
+    default:
+      commandState = RAW;
+      Serial.print("Switching to ");
+      printState();
+      break;
+  }
+}
+
+void printState() {
+  String stateText = "";
+  switch(commandState) {
+    case EDIT:
+      Serial.print("State: [EDIT]\n");
+      break;
+    case RAW:
+      Serial.print("State: [RAW]\n");
+      break;
+    case ASCII:
+      Serial.print("State: [ASCII]\n");
+      break;
   }
 }
 
@@ -71,29 +114,52 @@ void processMorse(String myString) {
   // If we are switching modes we need to switch
   // and return to the event loop
   if (myString == "-..---") {
-    Serial.println("Switching modes...");
-    toggleModal();
+    toggleState();
     return;
   }
+  
+  // Figure out which mode we are in and process
+  switch(commandState) {
+    case EDIT:
+      editMode(myString);
+      break;
+    case RAW:
+      Keyboard.print(myString);
+      break;
+    case ASCII:
+      asciiMode(myString);
+      break;
+    default:
+      Serial.println(myString);
+      break;
+  }
+}
 
-  // We are not switching modes so process
-  // the input
-  if (modalEnabled) {
-    if (myString == ".-") {
+/** Mode Functions **/
+void asciiMode(String input) {
+  String output = "";
+
+  if (input == ".-") {
+    output = "A";
+  } else if (input == "-...") {
+    output = "B";
+  }
+ 
+  Keyboard.print(output);
+}
+
+void editMode(String input) {
+    if (input == ".-") {
       Serial.println("<up>");
-    } else if (myString == "-.") {
+    } else if (input == "-.") {
       Serial.println("<down>");
-    } else if (myString == "..") {
+    } else if (input == "..") {
       Serial.println("<right>");
-    } else if (myString == "--") {
+    } else if (input == "--") {
       Serial.println("<left>");
     } else {
       Serial.println("<UNKNOWN>");
     }
-  } else {
-      Keyboard.print(myString);
-  }
-
 }
 
 /** Event Loop **/
