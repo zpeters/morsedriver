@@ -26,13 +26,14 @@ String space = "/";
 Bounce pushbutton = Bounce();
 unsigned long downAt = 0;
 unsigned long upAt = 0;
-unsigned long timeout = 0;
-boolean timeoutBool = false;
+unsigned long letterTimeout = 0;
+unsigned long lastUpdate = 0;
+boolean letterTimeoutBool = false;
 String myLetter = "";
 enum State {
   RAW,
   ASCII,
-  EDIT
+  COMMAND
 };
 enum State commandState = RAW;
 
@@ -71,7 +72,7 @@ void blinkDit() {
 /** State functions **/
 void toggleState() {
   switch(commandState) {
-    case EDIT:
+    case COMMAND:
       commandState = RAW;
       Serial.print("Switching to ");
       printState();
@@ -82,7 +83,7 @@ void toggleState() {
       printState();
       break;
     case ASCII:
-      commandState = EDIT;
+      commandState = COMMAND;
       Serial.print("Switching to ");
       printState();
       break;
@@ -97,8 +98,8 @@ void toggleState() {
 void printState() {
   String stateText = "";
   switch(commandState) {
-    case EDIT:
-      Serial.print("State: [EDIT]\n");
+    case COMMAND:
+      Serial.print("State: [COMMAND]\n");
       break;
     case RAW:
       Serial.print("State: [RAW]\n");
@@ -120,17 +121,19 @@ void processMorse(String myString) {
   
   // Figure out which mode we are in and process
   switch(commandState) {
-    case EDIT:
+    case COMMAND:
       editMode(myString);
       break;
     case RAW:
       Keyboard.print(myString);
+      Keyboard.print(space);
       break;
     case ASCII:
       asciiMode(myString);
       break;
     default:
       Serial.println(myString);
+      Keyboard.print(space);
       break;
   }
 }
@@ -143,20 +146,95 @@ void asciiMode(String input) {
     output = "A";
   } else if (input == "-...") {
     output = "B";
+  } else if (input == "-.-.") {
+    output = "C";
+  } else if (input == "-..") {
+    output = "D";
+  } else if (input == ".") {
+    output = "E";
+  } else if (input == "..-.") {
+    output = "F";
+  } else if (input == "--.") {
+    output = "G";
+  } else if (input == "....") {
+    output = "H";
+  } else if (input == "..") {
+    output = "I";
+  } else if (input == ".---") {
+    output = "J";
+  } else if (input == "-.-") {
+    output = "K";
+  } else if (input == ".-..") {
+    output = "L";
+  } else if (input == "--") {
+    output = "M";
+  } else if (input == "-.") {
+    output = "N";
+  } else if (input == "---") {
+    output = "O";
+  } else if (input == ".--.") {
+    output = "P";
+  } else if (input == "--.-") {
+    output = "Q";
+  } else if (input == ".-.") {
+    output = "R";
+  } else if (input == "...") {
+    output = "S";
+  } else if (input == "-") {
+    output = "T";
+  } else if (input == "..-") {
+    output = "U";
+  } else if (input == "...-") {
+    output = "V";
+  } else if (input == ".--") {
+    output = "W";
+  } else if (input == "-..-") {
+    output = "X";
+  } else if (input == "-.--") {
+    output = "Y";
+  } else if (input == "--..") {
+    output = "Z";
+  } else if (input == ".----") {
+    output = "1";
+  } else if (input == "..---") {
+    output = "2";
+  } else if (input == "...--") {
+    output = "3";
+  } else if (input == "....-") {
+    output = "4";
+  } else if (input == ".....") {
+    output = "5";
+  } else if (input == "-....") {
+    output = "6";
+  } else if (input == "--...") {
+    output = "7";
+  } else if (input == "---..") {
+    output = "8";
+  } else if (input == "----.") {
+    output = "9";
+  } else if (input == "-----") {
+    output = "0";
   }
- 
   Keyboard.print(output);
 }
 
 void editMode(String input) {
     if (input == ".-") {
       Serial.println("<up>");
+      Keyboard.press(KEY_UP_ARROW);
+      Keyboard.release(KEY_UP_ARROW);
     } else if (input == "-.") {
       Serial.println("<down>");
-    } else if (input == "..") {
-      Serial.println("<right>");
+      Keyboard.press(KEY_DOWN_ARROW);
+      Keyboard.release(KEY_DOWN_ARROW);
     } else if (input == "--") {
+      Serial.println("<right>");
+      Keyboard.press(KEY_RIGHT_ARROW);
+      Keyboard.release(KEY_RIGHT_ARROW);
+    } else if (input == "..") {
       Serial.println("<left>");
+      Keyboard.press(KEY_LEFT_ARROW);
+      Keyboard.release(KEY_LEFT_ARROW);
     } else {
       Serial.println("<UNKNOWN>");
     }
@@ -166,15 +244,17 @@ void editMode(String input) {
 void loop() {
      // Test if we have waited long enough for a space (aka a word is complete)
      // Continue processing the next input until we timeout
-    if ((millis() - timeout) > letterSpaceLength && timeoutBool == true) {
+    if ((millis() - letterTimeout) > letterSpaceLength && letterTimeoutBool == true) {
        processMorse(myLetter);
-       timeoutBool = false;
+       letterTimeoutBool = false;
        myLetter = "";
-       // send a space
-       Keyboard.print(space);
      }
     // If the button state has changed...
     if (pushbutton.update()) {
+      if (((millis() - lastUpdate) > wordSpaceLength) && commandState != COMMAND) {
+         Serial.println("ASCII OR RAW Word timeout");
+         Keyboard.print(" ");
+      }
       // Check if it has been pushed down...
       if (pushbutton.fallingEdge()) {
         digitalWrite(ledPin, HIGH);
@@ -188,14 +268,15 @@ void loop() {
         if (diff <= ditLength) {
           // if it was "dit" length then we got a dit add it to the letter accumulator
           myLetter += dit;
-          timeout = millis();
-          timeoutBool = true;
-        } else if (diff > ditLength) {
+          letterTimeout = millis();
+          letterTimeoutBool = true;
+        } else if (diff > ditLength && diff <= wordSpaceLength) {
           // if it was "dah" length then we got a dah add it to the letter accumulator
           myLetter += dah;
-          timeout = millis();
-          timeoutBool = true;
+          letterTimeout = millis();
+          letterTimeoutBool = true;
         }
       }
+      lastUpdate = millis();
     }
 }
